@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "type": "shell",
+  "echoCommand": true,
+  "cwd": "${workspaceFolder}",
+  "tasks": [
+    {
+      "label": "install chubster",
+      "command": "go install",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "build chubster",
+      "linux": {
+        "command": "go build -o ./bin/chubster ."
+      },
+      "windows": {
+        "command": "go build -o ./bin/chubster.exe ."
+      },
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}
