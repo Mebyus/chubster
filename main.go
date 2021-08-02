@@ -7,7 +7,17 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
+)
+
+const (
+	timeout       = 10 * time.Second
+	maxHeaderSize = 1 << 20
+
+	infoPrefix    = "[info]    "
+	errorPrefix   = "[error]   "
+	requestPrefix = "[request] "
 )
 
 type LogHandler struct {
@@ -15,40 +25,47 @@ type LogHandler struct {
 	handler http.Handler
 }
 
+func NewLogHandler(handler http.Handler) *LogHandler {
+	return &LogHandler{
+		handler: handler,
+		logger:  log.New(os.Stdout, requestPrefix, log.Lmsgprefix|log.Ltime),
+	}
+}
+
 func (h *LogHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	h.handler.ServeHTTP(rw, req)
-	h.logger.Printf("%s  %s\n", req.Method, req.URL.Path)
+	h.logger.Printf("%-8s %s", req.Method, req.URL.Path)
 }
 
 func main() {
-	logger := log.New(os.Stdout, "", 0)
-	var host, port, dir *string
+	loggerInfo := log.New(os.Stdout, infoPrefix, log.Lmsgprefix|log.Ltime)
+	loggerError := log.New(os.Stdout, errorPrefix, log.Lmsgprefix|log.Ltime)
 
-	host = flag.String("host", "", "HTTP server's host. Default: \"localhost\"")
-	port = flag.String("port", "80", "HTTP server's port. Default: \"80\"")
-	dir = flag.String("dir", ".", "HTTP server's dir. Default is CWD")
+	var host, dir string
+	var port uint
+
+	flag.StringVar(&host, "host", "localhost", "HTTP server's host")
+	flag.UintVar(&port, "port", 80, "HTTP server's port")
+	flag.StringVar(&dir, "dir", ".", "HTTP server's serve directory")
 
 	flag.Parse()
-	dirpath, err := filepath.Abs(*dir)
+
+	absDirPath, err := filepath.Abs(dir)
 	if err != nil {
-		logger.Printf("WARN: %v\n", err)
-		err = nil
-		dirpath = *dir
+		loggerError.Fatalln(err)
 	}
-	hostNiceStr := *host
-	if hostNiceStr == "" {
-		hostNiceStr = "127.0.0.1"
-	}
+
+	hostAndPort := net.JoinHostPort(host, strconv.FormatUint(uint64(port), 10))
 
 	server := http.Server{
-		Addr:           net.JoinHostPort(*host, *port),
-		Handler:        &LogHandler{handler: http.FileServer(http.Dir(*dir)), logger: logger},
-		ReadTimeout:    10 * time.Second,
-		WriteTimeout:   10 * time.Second,
-		MaxHeaderBytes: 1 << 20,
+		Addr:           hostAndPort,
+		Handler:        NewLogHandler(http.FileServer(http.Dir(absDirPath))),
+		ReadTimeout:    timeout,
+		WriteTimeout:   timeout,
+		MaxHeaderBytes: maxHeaderSize,
 	}
 
-	logger.Printf("Listening: [ %s:%s ]\nServing dir: [ %s ]\n", hostNiceStr, *port, dirpath)
-	log.Fatal(server.ListenAndServe())
-	return
+	loggerInfo.Printf("Serving:   %s", absDirPath)
+	loggerInfo.Printf("Listening: %s", hostAndPort)
+	loggerError.Fatalln(server.ListenAndServe())
 }
